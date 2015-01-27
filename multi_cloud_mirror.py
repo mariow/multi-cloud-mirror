@@ -180,8 +180,16 @@ class MultiCloudMirror:
       [fromBucket, toBucket] = scenario.split('->')
       srcService = fromBucket[:2].lower()
       destService = toBucket[:2].lower()
-      srcBucketName  = fromBucket[5:]
+      srcBucketName = fromBucket[5:]
+      if '/' in srcBucketName:
+         [ srcBucketName, srcPrefix] = fromBucket[5:].split('/', 1);
+      else:
+         srcPrefix = None
       destBucketName = toBucket[5:]
+      if '/' in destBucketName:
+         [ destBucketName, destPrefix] = toBucket[5:].split('/', 1);
+      else:
+         destPrefix = None
       serviceError = None
       # Validate Inputs
       if srcService not in ['cf','s3']:
@@ -190,31 +198,34 @@ class MultiCloudMirror:
          serviceError ="Destination service not recognized."
       elif srcService == destService:
          serviceError ="Same-cloud mirroring not supported."
-      self.logItem("\nScenario: %s; (from: %s in %s , to: %s in %s)" % (scenario, srcBucketName, srcService, destBucketName, destService), self.LOG_INFO)
-      return(srcService, srcBucketName, destService, destBucketName, serviceError)
+      elif srcPrefix != destPrefix:
+         serviceError ="Prefix must be the same"
+      self.logItem("\nScenario: %s; (from: %s [%s] in %s , to: %s [%s] in %s)" % (scenario, srcBucketName, srcPrefix, srcService, destBucketName, destPrefix, destService), self.LOG_INFO)
+      return(srcService, srcBucketName, srcPrefix, destService, destBucketName, destPrefix, serviceError)
 
-
-   def connectToBuckets(self, srcService, srcBucketName, destBucketName):
+   def connectToBuckets(self, srcService, srcBucketName, srcPrefix, destBucketName, destPrefix):
       """
       Open connections and list files in buckets/containers
       """
       # There's a limit in Cloud Files per listing of objects, so we get the Cloud Files list here
       # (to maximize code reuse)
       cfBucketName = destBucketName if srcService == 's3' else srcBucketName
+      cfPrefix = destPrefix if srcService == 's3' else srcPrefix
+      s3Prefix = srcPrefix if srcService == 's3' else destPrefix
       # Because the cloudfiles.ObjectResults class can't easily be appended to, we make a new list
       cfList = []
-      cfList.extend(self.cfConn.get_container(cfBucketName).get_objects())
+      cfList.extend(self.cfConn.get_container(cfBucketName).get_objects(prefix = cfPrefix))
       lastLen = len(cfList)
       while lastLen == self.CF_MAX_OBJECTS_IN_LIST:
-         cfList.extend(self.cfConn.get_container(cfBucketName).get_objects(marker=cfList[-1].name))
+         cfList.extend(self.cfConn.get_container(cfBucketName).get_objects(prefix = cfPrefix, marker=cfList[-1].name))
          lastLen = len(cfList) - lastLen
       # Now assign bucket/container lists to class lists
       if srcService == 's3':
-         self.srcList        = self.s3Conn.get_bucket(srcBucketName).list()
+         self.srcList        = self.s3Conn.get_bucket(srcBucketName).list(prefix = s3Prefix)
          self.destList       = cfList
       elif srcService == 'cf':
          self.srcList        = cfList
-         self.destList       = self.s3Conn.get_bucket(destBucketName).list()
+         self.destList       = self.s3Conn.get_bucket(destBucketName).list(prefix = s3Prefix)
       # Loop through the files at the destination
       for dKey in self.destList:
          myKeyName = getattr(dKey, 'key', dKey.name)
@@ -385,13 +396,13 @@ class MultiCloudMirror:
          raise
       # Cycle Through Requested Synchronizations
       for scenario in self.sync:
-         [srcService, srcBucketName, destService, destBucketName, serviceError] = self.getScenarioDetails(scenario)
+         [srcService, srcBucketName, srcPrefix, destService, destBucketName, destPrefix, serviceError] = self.getScenarioDetails(scenario)
          if serviceError is not None:
             self.logItem(serviceError, self.LOG_WARN)
             continue
          # Connect to the proper buckets and retrieve file lists
          try:
-            self.connectToBuckets(srcService, srcBucketName, destBucketName)
+            self.connectToBuckets(srcService, srcBucketName, srcPrefix, destBucketName, destPrefix)
          except (S3ResponseError, S3PermissionsError), err:
             self.logItem("Error in connecting to S3 bucket: [%d] %s" % (err.status, err.reason), self.LOG_WARN)
             continue
@@ -440,8 +451,8 @@ if __name__ == '__main__':
       parser.add_argument('--maxdelete', dest='maxFileDeletion',type=int, default=10, help='max number of files that can be deleted (-1 for unlimited)')
       parser.add_argument('--minsync', dest='minFileSync',type=int, default=10, help='min number of files that are synced before delete process is allowed to run')
       parser.add_argument('--sendmail', dest='sendmail', default=False, help='use sendmail instead of local smtp')
-      parser.add_argument('sync', metavar='"s3://bucket->cf://container"', nargs='+',
-                          help='a synchronization scenario, of the form "s3://bucket->cf://container" or "cf://container->s3://bucket"')
+      parser.add_argument('sync', metavar='"s3://bucket/prefix->cf://container/prefix" optional /prefix', nargs='+',
+                          help='a synchronization scenario, of the form "s3://bucket->cf://container" or "cf://container->s3://bucket" with an option /prefix that must match')
       args = parser.parse_args()
       mcm = MultiCloudMirror(args.sync, args.numProcesses, args.maxFileSize, args.emailDest, args.emailSrc, args.emailSubj, args.tmpFile, args.debug, args.sendmail, args.delete, args.maxFileDeletion, args.minFileSync)
       mcm.run()
