@@ -79,7 +79,27 @@ def copyToS3(srcBucketName, myKeyName, destBucketName,tmpFile):
    except S3ResponseError:
       # key may exist; just get it instead:
       newObj = destBucket.get_key(myKeyName)
-   newObj.set_contents_from_filename(tmpFile,replace=True)
+
+   mp = destBucket.initiate_multipart_upload(tmpFile)
+   source_size = os.stat(tmpFile).st_size
+   bytes_per_chunk = 5000*1024*1024
+   chunks_count = int(math.ceil(source_size / float(bytes_per_chunk)))
+
+   for i in range(chunks_count):
+      offset = i * bytes_per_chunk
+      remaining_bytes = source_size - offset
+      bytes = min([bytes_per_chunk, remaining_bytes])
+      part_num = i + 1
+      self.logItem("uploading part %d of of %d for %s" % (part_num, chunks_count, myKeyName), self.LOG_DEBUG)
+      with open(tmpFile, 'r') as fp:
+	 fp.seek(offset)
+	 mp.upload_part_from_file(fp=fp, part_num=part_num, size=bytes)
+
+   if len(mp.get_all_parts()) == chunks_count:
+      mp.complete_upload()
+   else:
+      mp.cancel_upload()
+
    os.remove(tmpFile)
 
 
