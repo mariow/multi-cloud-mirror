@@ -339,11 +339,11 @@ class MultiCloudMirror:
                      try:
                         job.get() # This will re-raise the exception.
                      except (S3ResponseError, S3PermissionsError, S3CopyError) as err:
-                        self.logItem("Error in %s %s to/from S3 bucket %s: [%d] %s" % (job_dict['task'], job_dict['myKeyName'], job_dict['s3BucketName'], err.status, err.reason), self.LOG_WARN)
+                        self.logItem("Error in %s %s to/from S3 bucket %s: [%d] %s" % (job_dict['task'], job_dict['myKeyName'], job_dict['destBucketName'], err.status, err.reason), self.LOG_WARN)
                         self.jobs.remove(job_dict)
                      except (ResponseError, NoSuchContainer, InvalidContainerName, InvalidUrl, ContainerNotPublic, AuthenticationFailed, AuthenticationError,
                              NoSuchObject, InvalidObjectName, InvalidMetaName, InvalidMetaValue, InvalidObjectSize, IncompleteSend), err:
-                        self.logItem("Error in %s %s to/from to CF container %s: %s" % (job_dict['task'], job_dict['myKeyName'], job_dict['cfBucketName'], err), self.LOG_WARN)
+                        self.logItem("Error in %s %s to/from to CF container %s: %s" % (job_dict['task'], job_dict['myKeyName'], job_dict['destBucketName'], err), self.LOG_WARN)
                         self.jobs.remove(job_dict)
                      except MultiCloudMirrorException as err:
                         self.logItem("MultiCloudMirror error in %s %s: %s" % (job_dict['task'], job_dict['myKeyName'], str(err)), self.LOG_WARN)
