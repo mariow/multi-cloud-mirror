@@ -82,8 +82,8 @@ def copyToS3(srcBucketName, myKeyName, destBucketName,tmpFile):
       newObj = destBucket.get_key(myKeyName)
 
    source_size = os.stat(tmpFile).st_size
-   min_mp_size = 500*1024*1024;
-   bytes_per_chunk = 50 * 1024 * 1024
+   min_mp_size = 50*1024*1024;
+   bytes_per_chunk = 10 * 1024 * 1024
    if source_size / bytes_per_chunk > 1024:
       bytes_per_chunk = ceil(source_size / 1024)
 
